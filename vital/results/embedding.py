@@ -59,8 +59,7 @@ class GroupsEmbeddingPlots(ResultsProcessor):
         mapper = self.umap.fit(encodings)
 
         # Ensure that matplotlib is using 'agg' backend
-        # to avoid possible 'Could not connect to any X display' errors
-        # when no X server is available, e.g. in remote terminal
+        # to avoid possible leak of file handles if matplotlib defaults to another backend
         plt.switch_backend("agg")
 
         if self.interactive:

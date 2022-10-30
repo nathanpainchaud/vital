@@ -134,8 +134,7 @@ def plot_mean_std_curve(
             Valid scales are those supported by matplotlib (link in the refs).
     """
     # Ensure that matplotlib is using 'agg' backend
-    # to avoid possible 'Could not connect to any X display' errors
-    # when no X server is available, e.g. in remote terminal
+    # to avoid possible leak of file handles if matplotlib defaults to another backend
     plt.switch_backend("agg")
 
     plot_title = f"{metric} w.r.t. {group_by}"
