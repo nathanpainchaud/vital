@@ -240,3 +240,55 @@ def rbf_kernel(x1: Tensor, x2: Tensor = None, length_scale: float | Sequence[flo
     sq_dist = torch.sum((x1 - x2) ** 2, -1)  # sq_dist = |x1 - x2|^2 / l^2
     k = torch.exp(-0.5 * sq_dist)  # exp( - sq_dist / 2 )
     return k
+
+
+def graph_alignment_score(
+    g1: Tensor, g2: Tensor, x: Tensor = None, zero_diagonals: bool = False, as_loss: bool = False
+) -> Tensor:
+    """Computes a graph alignment score between tensors representing connectivity/affinity matrices of a graph.
+
+    References:
+        - Implements the generalized alignment objective proposed in https://arxiv.org/pdf/1602.04181.pdf.
+
+    Args:
+        g1: (N1, N1), Square matrix representing the connectivity/affinity matrix of a graph.
+        g2: (N2, N2), Square matrix representing the connectivity/affinity matrix of a graph.
+        x: (N1, N2), Binary mapping indicating for each node in x1 which node in x2 it maps to.
+        zero_diagonals: Whether to treat the input matrices as affinity matrices, for which we zero the diagonals.
+        as_loss: Whether the score will be used as a loss to minimize, in which case the sign is flipped at the end.
+
+    Returns:
+        Alignment score between the two input graph matrix representations.
+    """
+    if x is None:
+        x = torch.eye(*g1.shape, device=g1.device)
+    x_T = x.T
+
+    if zero_diagonals:
+        g1 = g1.clone().fill_diagonal_(0)
+        g2 = g2.clone().fill_diagonal_(0)
+
+    # Predefine
+    n1_ones = torch.ones_like(g1)
+    n2_ones = torch.ones_like(g2)
+
+    # Compute the intermediate values used in the various formulations of the objective
+    num_matches = torch.trace(g1 @ x @ g2 @ x_T)
+    num_mismatches = torch.trace(g1 @ x @ (n2_ones - g2) @ x_T + (n1_ones - g1) @ x @ g2 @ x_T)
+    num_neutrals = torch.trace((n1_ones - g1) @ x @ (n2_ones - g2) @ x_T)
+
+    # Compute the regularization term used to weight the importance of mismatches and neutrals
+    gamma = (num_neutrals - num_mismatches) / (num_matches + num_neutrals - 2 * num_mismatches)
+
+    # Implementation following eq. 3 from the paper
+    # If n1 == n2, the traces on each individual connectivity matrices can be simplified to a sum over the whole matrix
+    alignment_score = num_matches - gamma * (torch.trace(g1 @ x @ n1_ones @ x_T) + torch.trace(n2_ones @ x @ g2 @ x_T))
+
+    # Implementation following eq. 4 from the paper
+    # TODO: Fix because the current implementation does not give the same result as the implementation of eq. 3
+    # alignment_score = torch.trace((g1 - (gamma * n1_ones)) @ x @ (g2 - (gamma * n2_ones)) @ x_T)
+
+    if as_loss:
+        alignment_score = -alignment_score
+
+    return alignment_score
